@@ -14,7 +14,7 @@
     "react-dom": "18.2.0",
     "recharts": "2.12.0",
     "axios": "1.6.7",
-    "lucide-react": "0.336.0",
+    "lucide-react": "1.31.0",
     "clsx": "2.1.0"
   },
   "devDependencies": {
