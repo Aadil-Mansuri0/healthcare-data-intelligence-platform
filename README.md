@@ -2,6 +2,7 @@
 ### High-Performance Medallion Lakehouse, Real-Time Opioid Surveillance & HIPAA-Compliant AI Analytics for Medicare Part D
 
 [![CI Pipeline](https://github.com/Aadil-Mansuri0/healthcare-data-intelligence-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Aadil-Mansuri0/healthcare-data-intelligence-platform/actions)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAadil-Mansuri0%2Fhealthcare-data-intelligence-platform&root-directory=frontend)
 [![Next.js 14](https://img.shields.io/badge/Frontend-Next.js%2014-000000?style=flat&logo=nextdotjs)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%200.110-009688?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Snowflake](https://img.shields.io/badge/Warehouse-Snowflake%20Gold-29B5E8?style=flat&logo=snowflake)](https://www.snowflake.com/)
