@@ -1,6 +1,7 @@
 # HealthData IQ — Enterprise Healthcare Data Intelligence & Surveillance Platform
 ### High-Performance Medallion Lakehouse, Real-Time Opioid Surveillance & HIPAA-Compliant AI Analytics for Medicare Part D
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Website%20Active-brightgreen?style=for-the-badge&logo=githubpages&logoColor=white)](https://aadil-mansuri0.github.io/healthcare-data-intelligence-platform/)
 [![CI Pipeline](https://github.com/Aadil-Mansuri0/healthcare-data-intelligence-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Aadil-Mansuri0/healthcare-data-intelligence-platform/actions)
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAadil-Mansuri0%2Fhealthcare-data-intelligence-platform&root-directory=frontend)
 [![Next.js 14](https://img.shields.io/badge/Frontend-Next.js%2014-000000?style=flat&logo=nextdotjs)](https://nextjs.org/)
@@ -10,6 +11,8 @@
 [![Great Expectations](https://img.shields.io/badge/Quality-Great%20Expectations%200.18-FF7F0E?style=flat)](https://greatexpectations.io/)
 [![HIPAA Compliant](https://img.shields.io/badge/Security-HIPAA%20Safe%20Harbor%2018-00C49F?style=flat)](https://www.hhs.gov/hipaa)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+> 🌐 **Public Live Demo Link**: **[https://aadil-mansuri0.github.io/healthcare-data-intelligence-platform/](https://aadil-mansuri0.github.io/healthcare-data-intelligence-platform/)**
 
 ---
 
