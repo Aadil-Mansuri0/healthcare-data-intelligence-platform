@@ -1,0 +1,18 @@
+# Build context = project root (see docker-compose.yml streaming-consumer service)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    librdkafka-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY streaming/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY streaming/ ./streaming/
+
+ENV PYTHONPATH="/app"
+
+CMD ["python", "streaming/consumers/opioid_alert_consumer.py"]

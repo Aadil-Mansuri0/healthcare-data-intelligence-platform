@@ -1,0 +1,77 @@
+# Helm values for apache-airflow/airflow chart
+# Full default values: https://github.com/apache/airflow/blob/main/chart/values.yaml
+# (this file only overrides what matters for this project)
+
+executor: "CeleryExecutor"
+# Alternative for stronger task isolation (each task = its own pod, no shared
+# worker process): executor: "KubernetesExecutor" — trade-off is slower task
+# startup (pod scheduling latency) vs. Celery's persistent worker pool.
+
+airflowVersion: "2.8.1"
+
+images:
+  airflow:
+    repository: "${ECR_AIRFLOW_REPO_URL}"   # built from docker/Dockerfile.airflow via CI/CD
+    tag: "${IMAGE_TAG}"
+
+# DAGs are synced from the git repo continuously instead of baked into the
+# image — this means DAG changes deploy in ~seconds via a git push, no image
+# rebuild/redeploy needed for pipeline logic changes (only for dependency changes).
+dags:
+  gitSync:
+    enabled: true
+    repo: "https://github.com/<your-org>/healthcare_advanced.git"
+    branch: "main"
+    subPath: "airflow/dags"
+    wait: 60
+
+env:
+  - name: SNOWFLAKE_ACCOUNT
+    valueFrom:
+      secretKeyRef: { name: healthcare-app-secrets, key: SNOWFLAKE_ACCOUNT }
+  - name: SNOWFLAKE_PASSWORD
+    valueFrom:
+      secretKeyRef: { name: healthcare-app-secrets, key: SNOWFLAKE_PASSWORD }
+  - name: API_BASE_URL
+    value: "http://healthcare-api-svc.healthcare.svc.cluster.local:8000"
+
+webserver:
+  replicas: 2
+  resources:
+    requests: { cpu: "250m", memory: "512Mi" }
+    limits: { cpu: "1", memory: "1Gi" }
+  service:
+    type: ClusterIP
+
+scheduler:
+  replicas: 2   # HA scheduler — Airflow 2.x supports multiple schedulers safely
+  resources:
+    requests: { cpu: "500m", memory: "1Gi" }
+    limits: { cpu: "1.5", memory: "2Gi" }
+
+workers:
+  replicas: 2
+  resources:
+    requests: { cpu: "500m", memory: "1Gi" }
+    limits: { cpu: "2", memory: "3Gi" }
+  # Autoscale workers by queue depth in production via KEDA (out of scope here,
+  # noted for the next iteration).
+
+postgresql:
+  enabled: true   # chart-bundled HA-capable metadata DB — replaces the
+                   # single-container `airflow-postgres` from docker-compose
+
+redis:
+  enabled: true   # required for CeleryExecutor task queue
+
+ingress:
+  web:
+    enabled: true
+    ingressClassName: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - name: "airflow.healthcare-platform.example.com"
+        tls:
+          enabled: true
+          secretName: airflow-tls-cert

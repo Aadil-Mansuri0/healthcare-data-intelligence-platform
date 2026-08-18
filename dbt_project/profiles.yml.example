@@ -1,0 +1,28 @@
+# dbt connection profile — copy to ~/.dbt/profiles.yml and fill in credentials
+# (or supply via DBT_* environment variables, which is what CI/CD uses —
+# never commit real credentials here).
+
+healthcare_platform:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: HEALTHCARE_PIPELINE_WRITER
+      database: HEALTHCARE_DW_DEV
+      warehouse: HEALTHCARE_WH_DEV
+      schema: SILVER_SCHEMA
+      threads: 4
+
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: HEALTHCARE_PIPELINE_WRITER
+      database: HEALTHCARE_DW_PROD
+      warehouse: HEALTHCARE_WH_PROD
+      schema: SILVER_SCHEMA
+      threads: 8

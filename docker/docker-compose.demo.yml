@@ -1,0 +1,45 @@
+# Demo Mode Docker Compose — no Snowflake/AWS/OpenAI/Kafka/Airflow needed.
+# See demo/README.md for what this replaces and why.
+#
+# Usage:
+#   python demo/seed_database.py   (run once, from repo root)
+#   docker-compose -f docker/docker-compose.demo.yml up
+
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      DEMO_MODE: "true"
+      JWT_SECRET_KEY: "demo_mode_secret_key_not_for_production"
+      # OPENAI_API_KEY / SNOWFLAKE_* intentionally omitted — DEMO_MODE routes
+      # around every call site that would otherwise need them (see
+      # config/demo_mode.py, nlsql/nl_to_sql.py, rag/rag_engine.py).
+      CHROMA_PERSIST_DIR: /app/rag/vector_store/chroma_data
+    volumes:
+      - ../demo:/app/demo   # mounts the seeded healthcare_demo.db into the container
+      - demo_rag_data:/app/rag/vector_store/chroma_data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000   # baked in at build time — see Dockerfile comment
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  demo_rag_data:

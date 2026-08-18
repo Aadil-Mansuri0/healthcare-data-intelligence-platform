@@ -1,0 +1,22 @@
+# Build context = project root (docker-compose.yml sets context: ..)
+FROM apache/airflow:2.8.1-python3.11
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-jdk \
+    procps \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+USER airflow
+
+COPY docker/requirements-airflow.txt /requirements.txt
+RUN pip install --no-cache-dir -r /requirements.txt
+
+COPY airflow/dags /opt/airflow/dags
+COPY airflow/plugins /opt/airflow/plugins
+COPY lineage /opt/airflow/lineage
+COPY dbt_project /opt/airflow/dbt_project
+
+ENV PYTHONPATH="/opt/airflow"

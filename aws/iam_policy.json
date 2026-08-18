@@ -1,0 +1,50 @@
+{
+  "_comment": "IAM Policy — attach to the 'healthcare-pipeline-role' used by Airflow/Spark/EC2 to access S3 data lake buckets only. Follows least-privilege principle.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3DataLakeReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::healthcare-datalake",
+        "arn:aws:s3:::healthcare-datalake/*"
+      ]
+    },
+    {
+      "Sid": "S3ScriptsReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::healthcare-scripts",
+        "arn:aws:s3:::healthcare-scripts/*"
+      ]
+    },
+    {
+      "Sid": "CloudWatchLogging",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:log-group:/healthcare-pipeline/*"
+    },
+    {
+      "Sid": "SecretsManagerReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:*:secret:healthcare/*"
+    }
+  ]
+}

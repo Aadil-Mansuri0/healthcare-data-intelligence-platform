@@ -1,0 +1,94 @@
+# Periodic RAG re-ingestion — keeps the vector store's knowledge base and
+# schema docs fresh if source documents change (e.g. new CMS policy notes
+# added to rag/knowledge_base/documents.py and redeployed). Runs weekly.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rag-knowledge-refresh
+  namespace: healthcare
+spec:
+  schedule: "0 3 * * 0"   # 3 AM every Sunday
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: api-service-account
+          restartPolicy: OnFailure
+          containers:
+            - name: rag-ingest
+              image: ${ECR_API_REPO_URL}:${IMAGE_TAG}
+              command: ["python", "rag/ingestion/ingest.py", "--target", "all"]
+              envFrom:
+                - secretRef:
+                    name: healthcare-app-secrets
+              volumeMounts:
+                - name: rag-vector-data
+                  mountPath: /app/rag/vector_store/chroma_data
+          volumes:
+            - name: rag-vector-data
+              persistentVolumeClaim:
+                claimName: rag-vector-pvc
+---
+# Semantic cache eviction — deletes expired entries from the ChromaDB
+# semantic_query_cache collection (rag/semantic_cache.py::evict_expired_entries).
+# Previously TTL was only checked at read-time (expired entries were ignored
+# but never deleted), so the cache grew unboundedly — this closes that gap.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: semantic-cache-eviction
+  namespace: healthcare
+spec:
+  schedule: "*/15 * * * *"   # every 15 minutes — matches CACHE_TTL_SECONDS
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: api-service-account
+          restartPolicy: OnFailure
+          containers:
+            - name: cache-eviction
+              image: ${ECR_API_REPO_URL}:${IMAGE_TAG}
+              command: ["python", "-c", "from rag.semantic_cache import evict_expired_entries; print(f'Evicted {evict_expired_entries()} entries')"]
+              envFrom:
+                - secretRef:
+                    name: healthcare-app-secrets
+              volumeMounts:
+                - name: rag-vector-data
+                  mountPath: /app/rag/vector_store/chroma_data
+          volumes:
+            - name: rag-vector-data
+              persistentVolumeClaim:
+                claimName: rag-vector-pvc
+---
+# Nightly data-quality summary job — runs the AI data quality checker against
+# yesterday's Gold partition and posts results (extend the command with a
+# Slack webhook call for real alerting).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-quality-summary
+  namespace: healthcare
+spec:
+  schedule: "30 3 * * *"   # 3:30 AM daily — after the main Airflow pipeline lands
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: quality-check
+              image: ${ECR_API_REPO_URL}:${IMAGE_TAG}
+              command:
+                - "python"
+                - "-c"
+                - "from services.ai_data_quality_checker import run_ai_quality_check; import datetime, json; print(json.dumps(run_ai_quality_check(datetime.date.today().year)))"
+              envFrom:
+                - secretRef:
+                    name: healthcare-app-secrets

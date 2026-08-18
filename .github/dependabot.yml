@@ -1,0 +1,68 @@
+# Dependabot — automated dependency update PRs across every package
+# ecosystem in this repo. Each entry opens a weekly PR if a newer (secure)
+# version is available, grouped to avoid PR spam.
+
+version: 2
+updates:
+  # ─── Python: FastAPI backend ───────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "python", "api"]
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # ─── Python: streaming consumer ────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/streaming"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "python", "streaming"]
+
+  # ─── Python: Airflow (deliberately slower cadence — Airflow provider
+  #     upgrades can break DAGs; review manually rather than auto-merging) ────
+  - package-ecosystem: "pip"
+    directory: "/docker"
+    schedule:
+      interval: "monthly"
+    labels: ["dependencies", "python", "airflow"]
+    open-pull-requests-limit: 5
+
+  # ─── JavaScript: Next.js frontend ──────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "javascript", "frontend"]
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # Next.js major version bumps need manual App Router migration review
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+
+  # ─── Terraform providers ───────────────────────────────────────────────────
+  - package-ecosystem: "terraform"
+    directory: "/infra/terraform"
+    schedule:
+      interval: "monthly"
+    labels: ["dependencies", "terraform", "infra"]
+
+  # ─── Docker base images ────────────────────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "docker"]
+
+  # ─── GitHub Actions versions ────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels: ["dependencies", "ci"]

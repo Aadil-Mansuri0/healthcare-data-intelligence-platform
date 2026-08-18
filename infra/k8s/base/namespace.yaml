@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: healthcare
+  labels:
+    name: healthcare
+---
+# ResourceQuota — prevents any one team/service from starving the cluster.
+# Standard MNC guardrail on shared clusters.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: healthcare-quota
+  namespace: healthcare
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "50"
+---
+# Default NetworkPolicy — deny all ingress by default; each service opens only
+# the ports it needs (see api/networkpolicy.yaml, frontend/networkpolicy.yaml).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: healthcare
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress

@@ -1,0 +1,10 @@
+apache-airflow-providers-snowflake==5.2.0
+apache-airflow-providers-amazon==8.17.0
+apache-airflow-providers-apache-spark==4.7.1
+pyspark==3.5.0
+psycopg2-binary==2.9.9
+great-expectations==0.18.8
+openlineage-airflow==1.15.0
+openlineage-python==1.15.0
+dbt-snowflake==1.7.3
+openlineage-dbt==0.30.0

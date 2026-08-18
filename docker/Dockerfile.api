@@ -1,0 +1,47 @@
+# Build context MUST be the project root (see docker-compose.yml) —
+# this image needs api/, nlsql/, rag/, compliance/, and demo/ together since
+# api imports across all of them (e.g. rag_engine imports nlsql.nl_to_sql;
+# routes import rag.*; nl_to_sql imports compliance.phi_redaction AND
+# demo.mock_llm for the DEMO_MODE branch).
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System deps: gcc/libffi for snowflake-connector & bcrypt, libpq for psycopg,
+# curl for the docker-compose-level healthcheck (docker/docker-compose.yml
+# and docker-compose.demo.yml both override this image's own Python-based
+# HEALTHCHECK below with a curl-based one — without curl installed, that
+# compose-level healthcheck fails immediately and the container shows
+# "unhealthy" forever even when the app is running fine — a real bug caught
+# in review before anyone ran `docker ps` and got confused by it).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libffi-dev \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY api/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy every package the API depends on, preserving their relative layout
+# so `import nlsql.nl_to_sql` / `import rag.rag_engine` / `import demo.mock_llm`
+# resolve exactly as they do in local dev (repo root on PYTHONPATH).
+COPY api/ ./api/
+COPY nlsql/ ./nlsql/
+COPY rag/ ./rag/
+COPY compliance/ ./compliance/
+COPY demo/ ./demo/
+
+ENV PYTHONPATH="/app:/app/api"
+WORKDIR /app/api
+
+# Vector store persistence directory (mounted as a volume in docker-compose)
+RUN mkdir -p /app/rag/vector_store/chroma_data
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

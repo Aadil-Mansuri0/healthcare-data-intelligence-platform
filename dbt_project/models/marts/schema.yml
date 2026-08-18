@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: fct_drug_summary
+    description: "Yearly aggregated drug cost/claim metrics — the dbt-owned equivalent of GOLD_SCHEMA.DRUG_SUMMARY"
+    columns:
+      - name: generic_name
+        tests: [not_null]
+      - name: claim_year
+        tests: [not_null]
+      - name: total_cost_usd
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: cost_rank
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+
+  - name: fct_state_kpi
+    description: "Yearly state-level KPIs — the dbt-owned equivalent of GOLD_SCHEMA.STATE_KPI"
+    columns:
+      - name: state_abrvtn
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
+                       'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+                       'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT',
+                       'VA','WA','WV','WI','WY','DC','PR']
+      - name: total_cost_usd
+        tests: [not_null]
+      - name: national_rank
+        tests: [not_null]
+    tests:
+      # Composite uniqueness — no duplicate (state, year) rows allowed in the mart
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - state_abrvtn
+            - claim_year
+
+  - name: dim_prescriber_summary
+    description: "Yearly per-prescriber summary — the dbt-owned equivalent of GOLD_SCHEMA.PRESCRIBER_SUMMARY"
+    columns:
+      - name: prescriber_npi
+        tests: [not_null]
+      - name: generic_rate
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - prescriber_npi
+            - claim_year

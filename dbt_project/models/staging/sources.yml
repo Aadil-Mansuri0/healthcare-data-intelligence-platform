@@ -1,0 +1,32 @@
+version: 2
+
+# Sources — the Silver-layer tables landed by the Spark medallion pipeline
+# (medallion/silver/transformation.py writes to S3; a Snowflake external
+# table / COPY INTO step, not shown here, mirrors Silver into these tables).
+# dbt picks up from here — Spark handles raw-scale cleaning at the row level,
+# dbt handles business-logic aggregation with tests + version-controlled SQL.
+sources:
+  - name: silver
+    database: "{{ env_var('SNOWFLAKE_DATABASE', 'HEALTHCARE_DW_DEV') }}"
+    schema: SILVER_SCHEMA
+    tables:
+      - name: prescriber_drug
+        description: "Cleaned, deduplicated prescriber-drug claim records"
+        columns:
+          - name: prscrbr_npi
+            tests: [not_null]
+          - name: gnrc_name
+            tests: [not_null]
+          - name: tot_drug_cst
+            tests:
+              - dbt_utils.accepted_range:
+                  min_value: 0
+      - name: prescriber
+        description: "Cleaned prescriber directory"
+        columns:
+          - name: prscrbr_npi
+            tests: [not_null, unique]
+      - name: drug
+        description: "Cleaned drug reference table"
+      - name: state
+        description: "US state reference table"

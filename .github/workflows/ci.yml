@@ -1,0 +1,63 @@
+name: Healthcare Data Intelligence Platform CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  frontend-build:
+    name: Frontend Build & Typecheck (Next.js 14)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build Next.js Application
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+
+  backend-validation:
+    name: Backend & Data Pipeline Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Linting & Core Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+
+      - name: Python Syntax & Flake8 Verification
+        run: |
+          # Stop build if there are Python syntax errors or undefined names
+          flake8 api compliance rag --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings
+          flake8 api compliance rag --count --exit-zero --max-complexity=15 --max-line-length=127 --statistics
+
+      - name: Test Native SQLite Demo Database Seeder
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: |
+          node demo/seed_database.js

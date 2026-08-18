@@ -1,0 +1,308 @@
+name: Healthcare Platform CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: ap-south-1
+  TF_WORKING_DIR: infra/terraform/environments/prod
+
+jobs:
+  # ─── Dependency & Container Security Scanning ──────────────────────────────
+  # Dependabot (see .github/dependabot.yml) opens PRs for outdated deps on a
+  # schedule; this job actively BLOCKS the merge/deploy path on known CVEs —
+  # the two are complementary (proactive PRs vs. a hard gate on every push).
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Python dependency CVE audit (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit -r api/requirements.txt --desc \
+            || (echo "::warning::Known CVEs found in Python dependencies — review before merging" && exit 1)
+
+      - name: Python dependency CVE audit (streaming service)
+        run: |
+          pip-audit -r streaming/requirements.txt --desc \
+            || (echo "::warning::Known CVEs found in streaming dependencies" && exit 1)
+
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: JS dependency audit (npm audit)
+        working-directory: ./frontend
+        run: |
+          npm install --package-lock-only
+          npm audit --audit-level=high
+
+      - name: Secret scanning (gitleaks — catches committed API keys/passwords)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─── Test Spark / Python Jobs ──────────────────────────────────────────────
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pyspark==3.5.0
+          pip install -r api/requirements.txt
+
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          flake8 medallion/ api/ nlsql/ rag/ validation/ --max-line-length=120 --ignore=E501,W503
+
+      - name: Run unit + ETL tests
+        run: pytest tests/ -v --tb=short --ignore=tests/api
+
+  # ─── Test FastAPI (incl. RAG + Auth) ────────────────────────────────────────
+  test-api:
+    runs-on: ubuntu-latest
+    needs: test-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Install API dependencies
+        working-directory: ./api
+        run: pip install -r requirements.txt pytest httpx
+
+      - name: Run API tests
+        working-directory: ./api
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+        run: pytest ../tests/api -v
+
+  # ─── Test & Build Next.js ───────────────────────────────────────────────────
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package.json
+      - working-directory: ./frontend
+        run: npm install
+      - working-directory: ./frontend
+        run: npm run lint
+      - working-directory: ./frontend
+        run: npm run build
+
+  # ─── Terraform Plan (on PRs — review infra changes before merge) ────────────
+  terraform-plan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.7.5" }
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - run: terraform init
+      - name: Terraform Plan
+        env:
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          TF_VAR_snowflake_account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          TF_VAR_snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: terraform plan -var-file=terraform.tfvars.example -no-color
+        # Posts the plan as a PR comment in a full setup via a plan-comment action —
+        # omitted here for brevity, add actions/github-script if desired.
+
+  # ─── Build & Push Docker Images to ECR ──────────────────────────────────────
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: [test-api, test-frontend, security-scan]
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: vars
+        run: echo "image_tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Build API image (scan before push — see Trivy step below)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile.api
+          push: false
+          load: true
+          tags: local/healthcare-api:scan
+
+      - name: Scan API image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: local/healthcare-api:scan
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"   # fails the job — a real gate, not just a report
+          ignore-unfixed: true  # don't block on CVEs with no available patch yet
+
+      - name: Push API image (only after passing the scan above)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile.api
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/healthcare-platform/api:${{ steps.vars.outputs.image_tag }}
+            ${{ steps.ecr-login.outputs.registry }}/healthcare-platform/api:latest
+
+      - name: Build & push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          # NEXT_PUBLIC_API_URL must be baked in at BUILD time (Next.js
+          # inlines NEXT_PUBLIC_* into the client bundle during `next build`;
+          # setting it as a K8s Deployment env var at runtime has zero effect
+          # — a real bug caught in review, see infra/k8s/frontend/deployment.yaml
+          # comment and frontend/Dockerfile comment for the full explanation).
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api.healthcare-platform.example.com
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/healthcare-platform/frontend:${{ steps.vars.outputs.image_tag }}
+            ${{ steps.ecr-login.outputs.registry }}/healthcare-platform/frontend:latest
+
+      - name: Build & push Airflow image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile.airflow
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/healthcare-platform/airflow:${{ steps.vars.outputs.image_tag }}
+            ${{ steps.ecr-login.outputs.registry }}/healthcare-platform/airflow:latest
+
+  # ─── Terraform Apply (main branch only — provisions/updates real infra) ────
+  terraform-apply:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    environment: production   # requires manual approval if configured as a
+                               # protected GitHub Environment — recommended for prod
+    defaults:
+      run:
+        working-directory: ${{ env.TF_WORKING_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.7.5" }
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - run: terraform init
+      - name: Terraform Apply
+        env:
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          TF_VAR_snowflake_account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          TF_VAR_snowflake_password: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: terraform apply -var-file=terraform.tfvars.example -auto-approve
+
+  # ─── Data Quality Gate (runs GE suite against a staging Silver partition) ──
+  data-quality-gate:
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install great-expectations pyspark==3.5.0
+      - name: Run Great Expectations suite against staging data
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        run: python great_expectations/ge_silver_suite.py --date $(date +%Y-%m-%d)
+        continue-on-error: false   # a real quality gate — blocks deploy on failure
+
+  # ─── Deploy to Kubernetes ────────────────────────────────────────────────────
+  deploy:
+    runs-on: ubuntu-latest
+    needs: data-quality-gate
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name healthcare-platform-prod-eks
+
+      - name: Substitute image tags into manifests
+        env:
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        run: |
+          export ECR_API_REPO_URL=$(aws ecr describe-repositories --repository-names healthcare-platform/api --query 'repositories[0].repositoryUri' --output text)
+          export ECR_FRONTEND_REPO_URL=$(aws ecr describe-repositories --repository-names healthcare-platform/frontend --query 'repositories[0].repositoryUri' --output text)
+          envsubst < infra/k8s/api/deployment.yaml > /tmp/api-deployment.yaml
+          envsubst < infra/k8s/frontend/deployment.yaml > /tmp/frontend-deployment.yaml
+          envsubst < infra/k8s/jobs/cronjobs.yaml > /tmp/cronjobs.yaml
+
+      - name: Apply base resources
+        run: kubectl apply -f infra/k8s/base/namespace.yaml
+
+      - name: Deploy API (rolling update, zero downtime)
+        run: kubectl apply -f /tmp/api-deployment.yaml
+
+      - name: Deploy Frontend
+        run: kubectl apply -f /tmp/frontend-deployment.yaml
+
+      - name: Deploy CronJobs (RAG refresh, nightly quality summary)
+        run: kubectl apply -f /tmp/cronjobs.yaml
+
+      - name: Wait for rollout to complete (fails the job if pods don't come healthy)
+        run: |
+          kubectl rollout status deployment/healthcare-api -n healthcare --timeout=180s
+          kubectl rollout status deployment/healthcare-frontend -n healthcare --timeout=180s
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed health check — rolling back to previous revision"
+          kubectl rollout undo deployment/healthcare-api -n healthcare
+          kubectl rollout undo deployment/healthcare-frontend -n healthcare

@@ -1,0 +1,160 @@
+# FastAPI Backend — Deployment + Service + HPA + PDB + NetworkPolicy
+# Image comes from ECR (see infra/terraform/modules/ecr) and is deployed by
+# the GitHub Actions pipeline after a successful build (see ci_cd.yml deploy job).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: healthcare-api
+  namespace: healthcare
+  labels:
+    app: healthcare-api
+spec:
+  replicas: 2  # HPA scales this — see HorizontalPodAutoscaler below
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0   # zero-downtime deploys — always at least `replicas` pods up
+  selector:
+    matchLabels:
+      app: healthcare-api
+  template:
+    metadata:
+      labels:
+        app: healthcare-api
+    spec:
+      serviceAccountName: api-service-account   # IRSA — created by Terraform (main.tf)
+      containers:
+        - name: api
+          image: ${ECR_API_REPO_URL}:${IMAGE_TAG}   # substituted by CI/CD (envsubst) at deploy time
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: healthcare-app-secrets
+          env:
+            - name: SNOWFLAKE_ROLE
+              value: "HEALTHCARE_READER"
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: healthcare-app-secrets
+                  key: JWT_SECRET_KEY
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
+          volumeMounts:
+            - name: rag-vector-data
+              mountPath: /app/rag/vector_store/chroma_data
+      volumes:
+        - name: rag-vector-data
+          persistentVolumeClaim:
+            claimName: rag-vector-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rag-vector-pvc
+  namespace: healthcare
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: healthcare-api-svc
+  namespace: healthcare
+spec:
+  selector:
+    app: healthcare-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+# Horizontal Pod Autoscaler — scales 2→10 pods based on CPU, the standard
+# "stateless tier scales horizontally" pattern referenced in EC2_DEPLOYMENT.md,
+# now actually enforced instead of just documented.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: healthcare-api-hpa
+  namespace: healthcare
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: healthcare-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+# PodDisruptionBudget — guarantees at least 1 pod stays up during node drains
+# / cluster upgrades, so rolling K8s node updates don't cause a full outage.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: healthcare-api-pdb
+  namespace: healthcare
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: healthcare-api
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-ingress
+  namespace: healthcare
+spec:
+  podSelector:
+    matchLabels:
+      app: healthcare-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: healthcare-frontend
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - port: 8000

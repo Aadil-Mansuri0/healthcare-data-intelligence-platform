@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and fill in — DO NOT commit terraform.tfvars itself
+# (it's gitignored). Secrets (openai_api_key, snowflake_password, etc.) are
+# passed via TF_VAR_* environment variables instead, never written here.
+
+aws_region   = "ap-south-1"
+environment  = "prod"
+project_name = "healthcare-platform"
+
+vpc_cidr           = "10.20.0.0/16"
+availability_zones = ["ap-south-1a", "ap-south-1b"]
+
+eks_cluster_version     = "1.29"
+eks_node_instance_types = ["t3.large", "t3.xlarge"]
+eks_node_min_size       = 2
+eks_node_max_size       = 8
+eks_node_desired_size   = 3
+
+datalake_bucket_name     = "healthcare-datalake"
+snowflake_warehouse_size = "SMALL"
