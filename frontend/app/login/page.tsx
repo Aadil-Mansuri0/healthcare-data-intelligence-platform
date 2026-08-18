@@ -3,33 +3,30 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
-import { Lock, User, AlertCircle, ShieldCheck, Sparkles, Database, ArrowRight, Loader2 } from "lucide-react";
+import { Lock, User, ShieldCheck, Sparkles, Database, ArrowRight, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("Admin@123");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  const handleLogin = async (u: string, p: string) => {
     setLoading(true);
-    try {
-      await login(username, password);
-      router.push("/dashboard");
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || "Login failed. Check your credentials.");
-    } finally {
-      setLoading(false);
-    }
+    await login(u, p);
+    router.push("/dashboard");
   };
 
-  const handleQuickFill = (u: string, p: string) => {
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleLogin(username, password);
+  };
+
+  const handleQuickLogin = (u: string, p: string) => {
     setUsername(u);
     setPassword(p);
+    handleLogin(u, p);
   };
 
   return (
@@ -57,16 +54,9 @@ export default function LoginPage() {
           <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
             <span className="text-xs font-bold text-white uppercase tracking-wider">Enterprise Sign In</span>
             <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-              JWT + RBAC Secured
+              Instant Live Access
             </span>
           </div>
-
-          {error && (
-            <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl p-3">
-              <AlertCircle size={15} className="shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             <div>
@@ -105,7 +95,7 @@ export default function LoginPage() {
             >
               {loading ? (
                 <>
-                  <Loader2 size={15} className="animate-spin" /> Authenticating...
+                  <Loader2 size={15} className="animate-spin" /> Entering Dashboard...
                 </>
               ) : (
                 <>
@@ -115,34 +105,34 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* 1-Click Demo Accounts */}
+          {/* 1-Click Instant Demo Accounts */}
           <div className="pt-3 border-t border-slate-800 space-y-2">
             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block text-center">
-              1-Click Demo Credentials
+              1-Click Instant Login (Select Role)
             </span>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => handleQuickFill("admin", "Admin@123")}
-                className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-colors"
+                onClick={() => handleQuickLogin("admin", "Admin@123")}
+                className="p-2.5 rounded-lg bg-slate-950 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-500/50 text-left transition-all group"
               >
-                <span className="text-[10px] font-bold text-purple-400 block">Admin</span>
+                <span className="text-[11px] font-bold text-purple-400 block group-hover:text-purple-300">Admin</span>
                 <span className="text-[9px] text-slate-400 block truncate">Full System</span>
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickFill("analyst", "Analyst@123")}
-                className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-colors"
+                onClick={() => handleQuickLogin("analyst", "Analyst@123")}
+                className="p-2.5 rounded-lg bg-slate-950 hover:bg-sky-950/40 border border-slate-800 hover:border-sky-500/50 text-left transition-all group"
               >
-                <span className="text-[10px] font-bold text-sky-400 block">Analyst</span>
+                <span className="text-[11px] font-bold text-sky-400 block group-hover:text-sky-300">Analyst</span>
                 <span className="text-[9px] text-slate-400 block truncate">AI & Reports</span>
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickFill("viewer", "Viewer@123")}
-                className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-colors"
+                onClick={() => handleQuickLogin("viewer", "Viewer@123")}
+                className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-left transition-all group"
               >
-                <span className="text-[10px] font-bold text-slate-300 block">Viewer</span>
+                <span className="text-[11px] font-bold text-slate-300 block group-hover:text-white">Viewer</span>
                 <span className="text-[9px] text-slate-400 block truncate">Read-only</span>
               </button>
             </div>
