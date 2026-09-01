@@ -57,7 +57,7 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         if: github.ref == 'refs/heads/main'
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   backend-validation:
     name: Backend & Data Pipeline Syntax Check
