@@ -9,7 +9,7 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.9
 prometheus-client==0.20.0
 markdown==3.5.2
-weasyprint==61.2
+weasyprint==69.0
 chromadb==0.4.24
 slowapi==0.1.9
 tenacity==8.2.3
