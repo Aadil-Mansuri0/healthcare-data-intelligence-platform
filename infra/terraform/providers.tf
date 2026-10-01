@@ -25,7 +25,7 @@ terraform {
     }
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.12"
+      version = "~> 3.3"
     }
     snowflake = {
       source  = "Snowflake-Labs/snowflake"
