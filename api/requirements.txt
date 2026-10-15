@@ -13,4 +13,4 @@ weasyprint==61.2
 chromadb==0.4.24
 slowapi==0.1.9
 tenacity==8.2.3
-redis==5.0.3
+redis==8.1.0
