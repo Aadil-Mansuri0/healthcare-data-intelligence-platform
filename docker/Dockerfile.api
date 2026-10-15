@@ -3,7 +3,7 @@
 # api imports across all of them (e.g. rag_engine imports nlsql.nl_to_sql;
 # routes import rag.*; nl_to_sql imports compliance.phi_redaction AND
 # demo.mock_llm for the DEMO_MODE branch).
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
